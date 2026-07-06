@@ -7,3 +7,4 @@ pymupdf
 sentence-transformers
 chromadb
 python-dotenv
+streamlit
