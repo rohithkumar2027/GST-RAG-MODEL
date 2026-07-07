@@ -151,13 +151,27 @@ def sample_rag(query: str, retriever: RAGRetriever, llm, rerank_k: int = 3):
 
 
 def main():
-	st.set_page_config(page_title="RAG Chatbot", layout="wide")
-	st.title("RAG Chatbot")
-
-	st.sidebar.header("Settings")
+	st.set_page_config( page_title="GST AI Assistant",
+    page_icon="📚",
+    layout="wide",
+    initial_sidebar_state="expanded")
+	st.title("📚 GST AI Assistant")
 	api_key = st.sidebar.text_input("OpenRouter API key (or set API_KEY in .env)", type="password")
 	top_k = st.sidebar.slider("Retriever top-k", 1, 20, 8)
 	rerank_k = st.sidebar.slider("Rerank top-k", 1, 5, 3)
+
+	with st.sidebar:
+		st.write("Embedding")
+		st.success("MiniLM-L12")
+
+		st.write("Retriever")
+		st.success("Top-10 Semantic Search")
+
+		st.write("Reranker")
+		st.success("CrossEncoder")
+
+		st.write("LLM")
+		st.success("Nemotron")
 
 	if api_key:
 		os.environ["API_KEY"] = api_key
