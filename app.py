@@ -172,7 +172,6 @@ def main():
     layout="wide",
     initial_sidebar_state="expanded")
 	st.title("📚 GST AI Assistant")
-	api_key = st.sidebar.text_input("OpenRouter API key (or set API_KEY in .env)", type="password")
 	top_k = st.sidebar.slider("Retriever top-k", 1, 20, 8)
 	rerank_k = st.sidebar.slider("Rerank top-k", 1, 5, 3)
 	selected_llm_model = st.sidebar.selectbox(
@@ -185,11 +184,6 @@ def main():
 		options=EMBEDDING_MODELS,
 		index=EMBEDDING_MODELS.index(DEFAULT_EMBEDDING_MODEL),
 	)
-
-	if api_key:
-		os.environ["API_KEY"] = api_key
-
-
 
 	query = st.text_input("Ask a question about the uploaded PDFs:")
 
