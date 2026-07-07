@@ -7,6 +7,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+LLM_MODELS = [
+	"meta-llama/llama-3.3-70b-instruct",
+	"openai/gpt-oss-120b",
+	"google/gemma-4-31b-it",
+	"nvidia/nemotron-3-nano-30b-a3b",
+]
+DEFAULT_LLM_MODEL = "nvidia/nemotron-3-nano-30b-a3b"
+
+EMBEDDING_MODELS = [
+	"sentence-transformers/all-MiniLM-L6-v2",
+	"sentence-transformers/all-MiniLM-L12-v2",
+	"intfloat/e5-base-v2",
+]
+DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L12-v2"
+
+
 @st.cache_resource
 def load_sentence_model(name: str):
 	from sentence_transformers import SentenceTransformer
@@ -21,7 +37,7 @@ def load_cross_encoder(name: str):
 
 
 class EmbeddingManger:
-	def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L12-v2"):
+	def __init__(self, model_name: str = DEFAULT_EMBEDDING_MODEL):
 		self.model_name = model_name
 		self.model = None
 		self.load_model()
@@ -128,7 +144,7 @@ class ReRanker:
 		return retrieved_docs[:top_k]
 
 
-def sample_rag(query: str, retriever: RAGRetriever, llm, rerank_k: int = 3):
+def sample_rag(query: str, retriever: RAGRetriever, llm, model_name: str, rerank_k: int = 3):
 	from openai import OpenAI
 
 	re_ranker = ReRanker()
@@ -142,7 +158,7 @@ def sample_rag(query: str, retriever: RAGRetriever, llm, rerank_k: int = 3):
 
 	try:
 		response = llm.chat.completions.create(
-			model="nvidia/nemotron-3-nano-30b-a3b",
+			model=model_name,
 			messages=[{"role": "user", "content": prompt}],
 		)
 		return response.choices[0].message.content, results
@@ -159,31 +175,28 @@ def main():
 	api_key = st.sidebar.text_input("OpenRouter API key (or set API_KEY in .env)", type="password")
 	top_k = st.sidebar.slider("Retriever top-k", 1, 20, 8)
 	rerank_k = st.sidebar.slider("Rerank top-k", 1, 5, 3)
-
-	with st.sidebar:
-		st.write("Embedding")
-		st.success("MiniLM-L12")
-
-		st.write("Retriever")
-		st.success("Top-10 Semantic Search")
-
-		st.write("Reranker")
-		st.success("CrossEncoder")
-
-		st.write("LLM")
-		st.success("Nemotron")
+	selected_llm_model = st.sidebar.selectbox(
+		"LLM model",
+		options=LLM_MODELS,
+		index=LLM_MODELS.index(DEFAULT_LLM_MODEL),
+	)
+	selected_embedding_model = st.sidebar.selectbox(
+		"Embedding model",
+		options=EMBEDDING_MODELS,
+		index=EMBEDDING_MODELS.index(DEFAULT_EMBEDDING_MODEL),
+	)
 
 	if api_key:
 		os.environ["API_KEY"] = api_key
 
-	st.sidebar.markdown("---")
-	st.sidebar.markdown("Data directory: chroma/")
+
 
 	query = st.text_input("Ask a question about the uploaded PDFs:")
 
-	if "embedding_manager" not in st.session_state:
+	if "embedding_manager" not in st.session_state or st.session_state.get("selected_embedding_model") != selected_embedding_model:
 		try:
-			st.session_state.embedding_manager = EmbeddingManger()
+			st.session_state.embedding_manager = EmbeddingManger(model_name=selected_embedding_model)
+			st.session_state.selected_embedding_model = selected_embedding_model
 		except Exception as e:
 			st.error(f"Failed to load embedding model: {e}")
 
@@ -201,7 +214,7 @@ def main():
 				llm = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("API_KEY"))
 
 				retriever = RAGRetriever(st.session_state.vector_store, st.session_state.embedding_manager)
-				answer, docs = sample_rag(query, retriever, llm, rerank_k=rerank_k)
+				answer, docs = sample_rag(query, retriever, llm, model_name=selected_llm_model, rerank_k=rerank_k)
 
 				st.subheader("Answer")
 				st.write(answer)
