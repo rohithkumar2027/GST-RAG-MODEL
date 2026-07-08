@@ -185,8 +185,6 @@ def main():
 		index=EMBEDDING_MODELS.index(DEFAULT_EMBEDDING_MODEL),
 	)
 
-	query = st.text_input("Ask a question about the uploaded PDFs:")
-
 	if "embedding_manager" not in st.session_state or st.session_state.get("selected_embedding_model") != selected_embedding_model:
 		try:
 			st.session_state.embedding_manager = EmbeddingManger(model_name=selected_embedding_model)
@@ -200,7 +198,12 @@ def main():
 		except Exception as e:
 			st.error(f"Failed to initialize vector store: {e}")
 
-	if query:
+	if "conversation" not in st.session_state:
+		st.session_state.conversation = []
+
+	user_question = st.chat_input("Ask a question about the uploaded PDFs:")
+
+	if user_question:
 		with st.spinner("Retrieving and generating answer..."):
 			try:
 				from openai import OpenAI
@@ -208,22 +211,40 @@ def main():
 				llm = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("API_KEY"))
 
 				retriever = RAGRetriever(st.session_state.vector_store, st.session_state.embedding_manager)
-				answer, docs = sample_rag(query, retriever, llm, model_name=selected_llm_model, rerank_k=rerank_k)
+				answer, docs = sample_rag(user_question, retriever, llm, model_name=selected_llm_model, rerank_k=rerank_k)
 
-				st.subheader("Answer")
-				st.write(answer)
-
-				if docs:
-					st.subheader("Retrieved passages")
-					for i, doc in enumerate(docs, start=1):
-						with st.expander(f"Passage {i} — score {doc.get('rerank_score', 0):.4f}"):
-							st.write(doc.get("content", ""))
-							st.markdown(f"**Similarity:** {doc.get('similarity_score', 0):.4f}")
-							if doc.get("metadata"):
-								st.write(doc.get("metadata"))
-
+				st.session_state.conversation.append(
+					{
+						"question": user_question,
+						"answer": answer,
+						"docs": [
+							{
+								"content": doc.get("content", ""),
+								"score": doc.get("rerank_score", 0.0),
+								"similarity": doc.get("similarity_score", 0.0),
+								"metadata": doc.get("metadata"),
+							}
+							for doc in docs
+						],
+					}
+				)
 			except Exception as e:
 				st.error(f"Error answering query: {e}")
+
+	for turn in st.session_state.conversation:
+		st.markdown("---")
+		st.markdown("**User query**")
+		st.write(turn["question"])
+		st.markdown("**Model answer**")
+		st.write(turn["answer"])
+		if turn["docs"]:
+			st.markdown("**Retrieved passages**")
+			for i, doc in enumerate(turn["docs"], start=1):
+				with st.expander(f"Passage {i} — score {doc['score']:.4f}"):
+					st.write(doc["content"])
+					st.markdown(f"**Similarity:** {doc['similarity']:.4f}")
+					if doc["metadata"]:
+						st.write(doc["metadata"])
 
 
 if __name__ == "__main__":
