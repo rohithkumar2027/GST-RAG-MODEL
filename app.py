@@ -175,7 +175,6 @@ def render_chat_bubble(role: str, content: str, docs: List[dict] | None = None):
 			f"""
 			<div style="display:flex;justify-content:flex-end;margin:0.6rem 0;">
 			  <div style="max-width:80%;background:linear-gradient(135deg,#2563eb,#3b82f6);color:white;padding:0.8rem 1rem;border-radius:18px 18px 4px 18px;box-shadow:0 4px 10px rgba(37,99,235,0.2);">
-			    <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.25rem;opacity:0.9;">Query</div>
 			    {text}
 			  </div>
 			</div>
@@ -192,17 +191,16 @@ def render_chat_bubble(role: str, content: str, docs: List[dict] | None = None):
 			score = doc.get("score", 0.0)
 			similarity = doc.get("similarity", 0.0)
 			metadata = doc.get("metadata")
-			metadata_html = f"<div style='margin-top:0.35rem;font-size:0.9rem;color:#4b5563;'>{escape(str(metadata))}</div>" if metadata else ""
+			metadata_html = f"<div style='margin-top:0.35rem;font-size:0.9rem;opacity:0.6;'>{escape(str(metadata))}</div>" if metadata else ""
 			passages.append(
-				f"<details style='margin-top:0.6rem;'><summary style='cursor:pointer;color:#2563eb;'>Passage {i} · score {score:.4f}</summary><div style='margin-top:0.4rem;'>{doc_text}</div><div style='margin-top:0.25rem;font-size:0.9rem;color:#4b5563;'>Similarity: {similarity:.4f}</div>{metadata_html}</details>"
+				f"<details style='margin-top:0.6rem;'><summary style='cursor:pointer;color:#2563eb;font-weight:600;'>Passage {i} · score {score:.4f}</summary><div style='margin-top:0.4rem;opacity:0.85;'>{doc_text}</div><div style='margin-top:0.25rem;font-size:0.9rem;opacity:0.6;'>Similarity: {similarity:.4f}</div>{metadata_html}</details>"
 			)
-		docs_html = f"<div style='margin-top:0.6rem;'>{''.join(passages)}</div>"
+		docs_html = f"<div style='margin-top:0.8rem;border-top:1px solid rgba(128,128,128,0.2);padding-top:0.6rem;'>{''.join(passages)}</div>"
 
 	st.markdown(
 		f"""
-		<div style="display:flex;justify-content:flex-start;margin:0.6rem 0;">
-		  <div style="max-width:90%;background:#f3f4f6;color:#111827;padding:0.8rem 1rem;border-radius:18px 18px 18px 4px;box-shadow:0 4px 10px rgba(15,23,42,0.06);">
-		    <div style="font-size:0.8rem;font-weight:700;margin-bottom:0.35rem;color:#2563eb;">Answer</div>
+		<div style="display:flex;justify-content:flex-start;margin:1rem 0;width:100%;">
+		  <div style="max-width:100%;line-height:1.6;font-size:1rem;width:100%;">
 		    {text}
 		    {docs_html}
 		  </div>
@@ -210,6 +208,7 @@ def render_chat_bubble(role: str, content: str, docs: List[dict] | None = None):
 		""",
 		unsafe_allow_html=True,
 	)
+
 
 
 def main():
@@ -247,11 +246,19 @@ def main():
 	if "conversation" not in st.session_state:
 		st.session_state.conversation = []
 
+	# Display chat messages from history on app rerun
+	for turn in st.session_state.conversation:
+		render_chat_bubble(turn.get("role", "assistant"), turn.get("content", ""), turn.get("docs", []))
+
 	user_question = st.chat_input("Ask a question about the uploaded PDFs:")
 
 	if user_question:
+		# Render user question immediately to keep visual continuity
+		render_chat_bubble("user", user_question)
 		st.session_state.conversation.append({"role": "user", "content": user_question})
-		with st.spinner("Retrieving and generating answer..."):
+
+		# Show a loading circle spinner while fetching from documents
+		with st.spinner("Fetching from the documents..."):
 			try:
 				from openai import OpenAI
 
@@ -260,26 +267,28 @@ def main():
 				retriever = RAGRetriever(st.session_state.vector_store, st.session_state.embedding_manager)
 				answer, docs = sample_rag(user_question, retriever, llm, model_name=selected_llm_model, rerank_k=rerank_k)
 
+				formatted_docs = [
+					{
+						"content": doc.get("content", ""),
+						"score": doc.get("rerank_score", 0.0),
+						"similarity": doc.get("similarity_score", 0.0),
+						"metadata": doc.get("metadata"),
+					}
+					for doc in docs
+				]
+
+				# Render assistant response immediately
+				render_chat_bubble("assistant", answer, formatted_docs)
+
 				st.session_state.conversation.append(
 					{
 						"role": "assistant",
 						"content": answer,
-						"docs": [
-							{
-								"content": doc.get("content", ""),
-								"score": doc.get("rerank_score", 0.0),
-								"similarity": doc.get("similarity_score", 0.0),
-								"metadata": doc.get("metadata"),
-							}
-							for doc in docs
-						],
+						"docs": formatted_docs,
 					}
 				)
 			except Exception as e:
 				st.error(f"Error answering query: {e}")
-
-	for turn in st.session_state.conversation:
-		render_chat_bubble(turn.get("role", "assistant"), turn.get("content", ""), turn.get("docs", []))
 
 
 if __name__ == "__main__":
