@@ -1,4 +1,5 @@
 import os
+from html import escape
 from typing import List, Any
 
 import streamlit as st
@@ -166,6 +167,51 @@ def sample_rag(query: str, retriever: RAGRetriever, llm, model_name: str, rerank
 		return f"LLM call failed: {e}", results
 
 
+def render_chat_bubble(role: str, content: str, docs: List[dict] | None = None):
+	text = escape(content or "").replace("\n", "<br>")
+
+	if role == "user":
+		st.markdown(
+			f"""
+			<div style="display:flex;justify-content:flex-end;margin:0.6rem 0;">
+			  <div style="max-width:80%;background:linear-gradient(135deg,#2563eb,#3b82f6);color:white;padding:0.8rem 1rem;border-radius:18px 18px 4px 18px;box-shadow:0 4px 10px rgba(37,99,235,0.2);">
+			    <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.25rem;opacity:0.9;">Query</div>
+			    {text}
+			  </div>
+			</div>
+			""",
+			unsafe_allow_html=True,
+		)
+		return
+
+	docs_html = ""
+	if docs:
+		passages = []
+		for i, doc in enumerate(docs, start=1):
+			doc_text = escape(doc.get("content", "") or "").replace("\n", "<br>")
+			score = doc.get("score", 0.0)
+			similarity = doc.get("similarity", 0.0)
+			metadata = doc.get("metadata")
+			metadata_html = f"<div style='margin-top:0.35rem;font-size:0.9rem;color:#4b5563;'>{escape(str(metadata))}</div>" if metadata else ""
+			passages.append(
+				f"<details style='margin-top:0.6rem;'><summary style='cursor:pointer;color:#2563eb;'>Passage {i} · score {score:.4f}</summary><div style='margin-top:0.4rem;'>{doc_text}</div><div style='margin-top:0.25rem;font-size:0.9rem;color:#4b5563;'>Similarity: {similarity:.4f}</div>{metadata_html}</details>"
+			)
+		docs_html = f"<div style='margin-top:0.6rem;'>{''.join(passages)}</div>"
+
+	st.markdown(
+		f"""
+		<div style="display:flex;justify-content:flex-start;margin:0.6rem 0;">
+		  <div style="max-width:90%;background:#f3f4f6;color:#111827;padding:0.8rem 1rem;border-radius:18px 18px 18px 4px;box-shadow:0 4px 10px rgba(15,23,42,0.06);">
+		    <div style="font-size:0.8rem;font-weight:700;margin-bottom:0.35rem;color:#2563eb;">Answer</div>
+		    {text}
+		    {docs_html}
+		  </div>
+		</div>
+		""",
+		unsafe_allow_html=True,
+	)
+
+
 def main():
 	st.set_page_config( page_title="GST AI Assistant",
     page_icon="📚",
@@ -204,6 +250,7 @@ def main():
 	user_question = st.chat_input("Ask a question about the uploaded PDFs:")
 
 	if user_question:
+		st.session_state.conversation.append({"role": "user", "content": user_question})
 		with st.spinner("Retrieving and generating answer..."):
 			try:
 				from openai import OpenAI
@@ -215,8 +262,8 @@ def main():
 
 				st.session_state.conversation.append(
 					{
-						"question": user_question,
-						"answer": answer,
+						"role": "assistant",
+						"content": answer,
 						"docs": [
 							{
 								"content": doc.get("content", ""),
@@ -232,19 +279,7 @@ def main():
 				st.error(f"Error answering query: {e}")
 
 	for turn in st.session_state.conversation:
-		st.markdown("---")
-		st.markdown("**User query**")
-		st.write(turn["question"])
-		st.markdown("**Model answer**")
-		st.write(turn["answer"])
-		if turn["docs"]:
-			st.markdown("**Retrieved passages**")
-			for i, doc in enumerate(turn["docs"], start=1):
-				with st.expander(f"Passage {i} — score {doc['score']:.4f}"):
-					st.write(doc["content"])
-					st.markdown(f"**Similarity:** {doc['similarity']:.4f}")
-					if doc["metadata"]:
-						st.write(doc["metadata"])
+		render_chat_bubble(turn.get("role", "assistant"), turn.get("content", ""), turn.get("docs", []))
 
 
 if __name__ == "__main__":
